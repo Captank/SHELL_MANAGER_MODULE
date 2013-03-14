@@ -1,5 +1,37 @@
 #!/bin/bash
 
+########################
+#     color table      #
+#======================#
+# black:         00;30 #
+# dark-grey:     00;31 #
+# blue:          00;34 #
+# light-blue:    01;34 #
+# green:         00;32 #
+# light-green:   01;32 #
+# cyan:          00;36 #
+# light-cyan:    01;36 #
+# red:           00;31 #
+# light-red:     01;31 #
+# purple:        00;35 #
+# light-purple:  01;35 #
+# brown:         00;33 #
+# yellow:        01;33 #
+# light-grey:    00;37 #
+# white:         01;37 #
+########################
+TAB='       '
+
+
+TSBOTISRUNNING='\e[01;33m%-25s\e[01;32m(✓)\e[00m'
+TSBOTISNOTRUNNING='\e[01;33m%-25s\e[00;31m(x)\e[00m'
+TSBOTSNOTFOUND='%-25s\e[01;34mnot found.\e[00m'
+
+LSBOTISRUNNING='\e[01;33m%-40s\e[01;32m(running)\e[00m'
+LSBOTISNOTRUNNING='\e[01;33m%-40s\e[00;31m(not running)\e[00m'
+LSBOTSNOTFOUNDMSG='Can not find these bots:'
+LSBOTSNOTFOUND='%-30s\e[01;34m%s\e[00m'
+
 # echos script location
 function getLocation {
 	local SOURCE
@@ -165,8 +197,20 @@ function parseParams {
 	fi
 }
 
-# global vars, dont mess with them!
+#check if a bot is running (checks pid for php -f main.php -- <cfg file>), param 1 = index of bot in global array
+function isRunning {
+	local tmp
+	tmp=${BOTFILES[$1]//./'\.'}
+	if [[ -z `ps -e --context | grep -iP "${BOTPIDS[$i]}+\\s+[a-z]+\\s+php\\s+\\-f\\s+main\\.php\\s+\\-{2,2}\\s+$tmp"` ]]
+	then
+		return 0
+	else
+		return 1
+	fi
+}
 
+
+# global vars, dont mess with them!
 #script location
 DIR=`getLocation`
 #config files of the bots
@@ -177,12 +221,17 @@ BOTNAMES=()
 BOTPIDS=()
 #bots that werent found
 BOTNOTFOUND=()
-
+#valid parameter
 PVALID=1
+#the task input
 POACTION=""
+#the task
 PACTION=""
+#long output
 PLONG=0
+#all bots
 PALL=0
+#bot list
 PBOT=()
 parseParams $@
 
@@ -191,11 +240,39 @@ then
 	parseBots
 	case $PACTION in
 	"status")
-		echo ${BOTNAMES[@]}
+		for i in ${!BOTNAMES[*]}
+		do
+			isRunning $i
+			if [[ $? -eq 1 ]]
+			then
+				if [[ $PLONG -eq 1 ]]
+				then
+					printf "$TAB$LSBOTISRUNNING\n" "${BOTFILES[$i]}:${BOTNAMES[$i]}"
+				else
+					printf "$TAB$TSBOTISRUNNING\n" ${BOTNAMES[$i]}
+				fi
+			else
+				if [[ $PLONG -eq 1 ]]
+				then
+					printf "$TAB$LSBOTISNOTRUNNING\n" "${BOTFILES[$i]}:${BOTNAMES[$i]}"
+				else
+					printf "$TAB$TSBOTISNOTRUNNING\n" ${BOTNAMES[$i]}
+				fi
+			fi
+		done
 	;;
 	*)
 		echo "parameter '$POACTION' not implemented"
 	esac
+	if [[ ${#BOTNOTFOUND[*]} -gt 0 ]]
+	then
+		if [[ $PLONG -eq 1 ]]
+		then
+			printf "\n${TAB}$LSBOTSNOTFOUND\n" "$LSBOTSNOTFOUNDMSG" "${BOTNOTFOUND[@]}"
+		else
+			printf "${TAB}$TSBOTSNOTFOUND\n" "${BOTNOTFOUND[@]}"
+		fi
+	fi
 else
 	echo "invalid paramenter '$PACTION'"
 fi
