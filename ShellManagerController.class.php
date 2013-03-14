@@ -31,7 +31,7 @@ class ShellManagerController {
 		$this->cfg = $_SERVER["argv"][1];
 		$this->pid = getmypid();
 		
-		$this->update(null);
+//		$this->update(null);
 	}
 	
 
@@ -40,15 +40,15 @@ class ShellManagerController {
 	 * @Description("updates the listfile")
 	 */
 	public function update($eventObj){
-		$data = $this->readBotData();
-		$this->saveBotData($data);
+/*		$data = $this->readBotData();
+		$this->saveBotData($data);*/
 	}
 	
 	/*
 	 * parses the list.pid file in <budabot>/list.pid
 	 */
 	private function readBotData(){
-		$result = Array();
+/*		$result = Array();
 		if(file_exists($this->listfile)){
 			$content = file_get_contents($this->listfile);
 			$content = explode("\n",$content);
@@ -60,14 +60,14 @@ class ShellManagerController {
 			}
 		}
 		$result[$this->name] = Array('cfg'=>$this->cfg,'pid'=>$this->pid);
-		return $result;
+		return $result;*/
 	}
 
 	/*
 	 * checks if its a valid and running bot
 	 */
 	private function isActiveBot($name,$cfg,$pid){		
-		if(!file_exists($d["cfg"])){
+/*		if(!file_exists($d["cfg"])){
 			return false;
 		}
 		else{
@@ -76,18 +76,18 @@ class ShellManagerController {
 				var_dump($x,$y);
 				return $x=="1";
 			}
-		}
+		}*/
 	}
 	
 	/*
 	 * saves the data to <budabot>/list.pid
 	 */
-	private function saveBotData(&$data){
-		$out = "";
+	private function saveBotData($data){
+/*		$out = "";
 		foreach($data as $name => $d){
 			$out.=$name.":".$d['cfg'].":".$d['pid']."\n";
 		}
-		file_put_contents($this->listfile,$out);
+		file_put_contents($this->listfile,$out);*/
 	}
 }
 

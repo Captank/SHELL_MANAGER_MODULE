@@ -1,84 +1,83 @@
 #!/bin/bash
 
-DIR="."
-BOTIDENTS=()
-BOTFILES=()
-BOTNAMES=()
-BOTPIDS=()
+# echos script location
+function getLocation {
+	local SOURCE
+	local DIR
+	SOURCE="${BASH_SOURCE[0]}"
+	while [ -h "$SOURCE" ]; do # resolve $SOURCE until the file is no longer a symlink
+	  DIR="$( cd -P "$( dirname "$SOURCE" )" && pwd )"
+	  SOURCE="$(readlink "$SOURCE")"
+	  [[ $SOURCE != /* ]] && SOURCE="$DIR/$SOURCE" # if $SOURCE was a relative symlink, we need to resolve it relative to the path where the symlink file was located
+	done
+	DIR="$( cd -P "$( dirname "$SOURCE" )" && pwd )"
+	echo $DIR
+}
 
-# get bot data, will not parse the listfile, no parameters
-function readBots {
-	local i
-	local tmp
+# parsing the bots.list file
+function parseAllBots {
+	local line
 	local files
 	local names
 	local pids
-	local idents
-	names=()
-	pids=()
-	#get all config files, remove template file
-	files=(`ls $DIR/conf/ | grep "\\.php"`)
-	for i in ${!files[*]}
-	do
-		if [[ ${files[$i]} = "config.template.php" ]]
-		then
-			unset files[$i]
-		else
-			files[$i]="$DIR/conf/${files[$i]}"
-			tmp=`cat ${files[$i]} | grep -iP "vars\\['name'\\]\\s*\\=\\s*\\"[a-z0-9]+\\";" | grep -ioP "(?<=\\")[a-z0-9]+(?=\\")"`
-			names+=($tmp)
-			pids+=(0)
-			idents+=("${files[$i]}:$tmp")
-		fi
-	done
-	BOTIDENTS=(${idents[@]})
-	BOTFILES=(${files[@]})
-	BOTNAMES=(${names[@]})
-	BOTPIDS=(${pids[@]})
-}
-
-#returns the index of the bot, param 1 = botidentifier, returns 255 if wasnt found
-function getIndex {
-	local i
-	for i in ${!BOTNAMES[*]}
-	do
-		if [[ "$1" = "${BOTIDENTS[$i]}" ]]
-		then
-			return $i
-		fi
-	done
-	return 255
-}
-
-#parses the list file and saves the pid of bots, no parameters
-function parseListFile {
-	local line
 	local oifs
 	local data
-	local idx
-	local tmp
+	files=()
+	names=()
+	pids=()
 	oifs=$IFS
 	IFS=':'
 	while read line
 	do
 		data=($line)
-		getIndex "${data[1]}:${data[0]}"
-		idx=$?
-		if [[ $idx -lt 255 ]]
+		if [[ ${#data[@]} -eq 3 ]]
 		then
-			tmp=${BOTFILES[$idx]//"."/"\\."}
-			if [[ -z `ps -e --context | grep -iP "${data[2]}\\s+[a-z]+\\s+php\\s+\\-f\\s+main\\.php\\s+\\-\\-\\s+$tmp"` ]]
-			then
-				BOTPIDS[$idx]=0
-			else
-				BOTPIDS[$idx]=${data[2]}
-			fi
+			files+=(${data[0]})
+			names+=(${data[1]})
+			pids+=(${data[2]})
 		fi
-	done <list.pid
+	done <$DIR/bots.list
 	IFS=$oifs
+	BOTFILES=(${files[@]})
+	BOTNAMES=(${names[@]})
+	BOTPIDS=(${pids[@]})
 }
 
-# checks if the parameter is a parameter (starting with -), param 1 = parameter
+# parses the bots.list for specific bots, param 1 = string to look
+function parseBot {
+	local rows
+	local oifs
+	local data
+	rows=(`cat $DIR/bots.list | grep -iP "(/$1\\.php\\:|\\:$1\\:)"`)
+	if [[ ${#rows[@]} -eq 1 ]]
+	then
+		oifs=$IFS
+		IFS=':'
+		data=(${rows[0]})
+		BOTFILES+=(${data[0]})
+		BOTNAMES+=(${data[1]})
+		BOTPIDS+=(${data[2]})
+		IFS=$oifs
+	else
+		BOTNOTFOUND+=($1)
+	fi
+}
+
+#parse bots from bots.list
+function parseBots {
+	local bot
+	if [[ $PALL -eq 1 ]]
+	then
+		parseAllBots
+	else
+		for bot in ${PBOT[@]}
+		do
+			parseBot $bot
+		done
+	fi
+}
+
+# check if param is parameter or shall be handled as bot
 function isParam {
 	if [[ `expr index "$1" -` = "1" ]]
 	then
@@ -88,72 +87,115 @@ function isParam {
 	fi
 }
 
-# fills PARAMS and BOTS with data
-function getParamsAndBots {
-	local idx
-	local var
-	local found
-	idx=0
-	for var in "$@"
-	do	
-		idx=`expr $idx + 1`
-		isParam "$var"
-		if [[ $? -eq 1 ]]
-		then
-			PARAMS+=("$var")
-		else
-			break
-		fi
-	done
-	for var in "${@:$idx}"
-	do
-		found=0
-		#get bots by checking for character name
-		for i in ${!BOTNAMES[*]}
+# parses the params
+function parseParams {
+	local params
+	local bots
+	local p
+	local c
+	if [[ $# -eq 0 ]]
+	then
+		PACTION="status"
+		PLONG=0
+		PALL=1
+	else
+		c=0
+		for p in "$@"
 		do
-			if [[ "$var" = "${BOTNAMES[$i]}" ]]
+			c=`expr $c + 1`
+			isParam "$p"
+			if [[ $? -eq 1 ]]
 			then
-				BOTS+=($i)
-				found=1
+				case $p in
+				"--list"|"-ls")
+					PACTION="list"
+					POACTION=$p
+				;;
+				"--status"|"-s")
+					PACTION="status"
+					POACTION=$p
+				;;
+				"--start"|"-o")
+					PACTION="start"
+					POACTION=$p
+				;;
+				"--stop"|"-c")
+					PACTION="stop"
+					POACTION=$p
+				;;
+				"--restart"|"-r")
+					PACTION="restart"
+					POACTION=$p
+				;;
+				"--update"|"-u")
+					PUDATE="update"
+					POACTION=$p
+				;;
+				"--long"|"-l")
+					PLONG=1
+				;;
+				"--all"|"-a")
+					PALL=1
+				;;
+				"-la"|"-al")
+					PALL=1
+					PLONG=1
+				;;
+				*)
+					PACTION=$p
+					PVALID=0
+					break;
+				;;
+				esac
+			else
+				bots=(${@:$c})
+				break
 			fi
 		done
-		#bot name didnt exist so check for config file name
-		if [[ $found -eq 0 ]]
+		if [[ -z $PACTION ]]
 		then
-			if [[ "$DIR/conf/$var.php" = "${BOTFILES[$i]}" ]]
-			then
-				BOTS+=($i)
-				found=1
-			fi
-			# check deeper
-			if [[ $found -eq 0 ]]
-			then
-				echo "didnt found bot for '$var'"
-			fi
+			PACTION="status"
 		fi
-	done
+		if [[ ${#bots[@]} -eq 0 ]]
+		then
+			PALL=1
+		else
+			PBOT=(${bots[@]})
+		fi
+	fi
 }
 
-# get available bots
-readBots
-parseListFile
+# global vars, dont mess with them!
 
-#get parameters and bot indices
-PARAMS=()
-BOTS=()
-getParamsAndBots $@
+#script location
+DIR=`getLocation`
+#config files of the bots
+BOTFILES=()
+#character names of the bots
+BOTNAMES=()
+#pids of the bots inner process, 0 if not running
+BOTPIDS=()
+#bots that werent found
+BOTNOTFOUND=()
 
+PVALID=1
+POACTION=""
+PACTION=""
+PLONG=0
+PALL=0
+PBOT=()
+parseParams $@
 
-case ${PARAMS[0]} in
-"--status"|"-s")
-	for idx in ${BOTS[@]}
-	do
-		if [[ ${BOTPIDS[$idx]} -eq 0 ]]
-		then
-			echo "${BOTNAMES[$idx]} is off"
-		else
-			echo "${BOTNAMES[$idx]} is on"
-		fi
-	done
-;;
-esac
+if [[ $PVALID -eq 1 ]]
+then
+	parseBots
+	case $PACTION in
+	"status")
+		echo ${BOTNAMES[@]}
+	;;
+	*)
+		echo "parameter '$POACTION' not implemented"
+	esac
+else
+	echo "invalid paramenter '$PACTION'"
+fi
